@@ -39,76 +39,62 @@ const FallbackArt = {
   </svg>`
 };
 
-/* --- BGM制御（エラー自己診断付き） --- */
+/* --- 音量制御 --- */
 const bgmAudio = document.getElementById('audio-bgm');
 let isBgmPlaying = false;
+let seVolumeScale = 0.8; // SE音量倍率 (0.0 ~ 1.0)
+
+function changeBgmVolume(val) {
+  const vol = val / 100;
+  if (bgmAudio) bgmAudio.volume = vol;
+  document.getElementById('bgm-vol-txt').innerText = `${val}%`;
+}
+
+function changeSeVolume(val) {
+  seVolumeScale = val / 100;
+  document.getElementById('se-vol-txt').innerText = `${val}%`;
+}
 
 function tryResumeAudio() {
   if (isBgmPlaying && bgmAudio && bgmAudio.paused) {
-    bgmAudio.volume = 0.25;
-    bgmAudio.play().catch(e => {
-      console.warn("Audio play blocked:", e);
-    });
+    bgmAudio.play().catch(() => {});
   }
 }
 
 function toggleBgm(e) {
   if (e) e.stopPropagation();
   const btn = document.getElementById('bgm-toggle-btn');
-  if (!bgmAudio) {
-    alert("audio要素が見つかりません。");
-    return;
-  }
+  if (!bgmAudio) return;
 
   if (bgmAudio.paused) {
-    bgmAudio.volume = 0.25;
-    const playPromise = bgmAudio.play();
-
-    if (playPromise !== undefined) {
-      playPromise.then(() => {
-        isBgmPlaying = true;
-        btn.innerText = '🎵 BGM: 再生中';
-        addLog('BGMの再生を開始しました。', 'log-buff');
-      }).catch(err => {
-        isBgmPlaying = false;
-        console.error("BGM Play Error:", err);
-
-        if (window.location.protocol === 'file:') {
-          btn.innerText = '⚠️ ローカル実行エラー';
-          addLog('【エラー】file:// で開いているためブラウザが音声を遮断しました。Live Serverなどのローカルサーバーか、GitHub Pages上で開いてください。', 'log-bozu');
-        } else {
-          btn.innerText = '⚠️ 音源読込エラー';
-          addLog(`【エラー】音源が見つかりません: ${bgmAudio.src} の配置を確認してください。`, 'log-bozu');
-        }
-      });
-    }
+    const sliderVal = document.getElementById('bgm-vol-slider').value;
+    bgmAudio.volume = sliderVal / 100;
+    bgmAudio.play().then(() => {
+      isBgmPlaying = true;
+      btn.innerText = '🎵 BGM: 再生中';
+    }).catch(() => {
+      btn.innerText = '⚠️ 音源読込エラー';
+    });
   } else {
     bgmAudio.pause();
     isBgmPlaying = false;
     btn.innerText = '🔇 BGM: 停止中';
-    addLog('BGMを一時停止しました。');
   }
-}
-
-if (bgmAudio) {
-  bgmAudio.addEventListener('error', (e) => {
-    console.error("Audio Load Error:", e);
-    const btn = document.getElementById('bgm-toggle-btn');
-    if (btn) btn.innerText = '⚠️ 音源404エラー';
-    addLog('【エラー】bgm/bgm.mp3 の読み込みに失敗しました。bgmフォルダとファイル名を確認してください。', 'log-bozu');
-  });
 }
 
 /* --- Web Audio 効果音 --- */
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playTone(freq, duration, type = 'sine', gainVal = 0.05) {
+function playTone(freq, duration, type = 'sine', baseGain = 0.05) {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+  const effectiveGain = baseGain * seVolumeScale;
+  gain.gain.setValueAtTime(effectiveGain, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+
   osc.connect(gain);
   gain.connect(audioCtx.destination);
   osc.start();
@@ -913,6 +899,5 @@ function finishEnemyTurn() {
   }
 }
 
-// 初期起動
 resetDrawnCardUI();
 startNewBattle();
