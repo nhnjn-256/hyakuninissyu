@@ -8,13 +8,26 @@
 </head>
 <body>
 
-<!-- BGM音源タグ（ローカル・リポジトリ内ファイル） -->
 <audio id="audio-bgm" src="bgm/bgm.mp3" loop preload="auto"></audio>
 
 <div class="game-container" onclick="tryResumeAudio()">
   <div class="header-bar">
     <h1>百人一首 異世界言霊バトル</h1>
     <button class="bgm-btn" id="bgm-toggle-btn" onclick="toggleBgm(event)">🎵 BGM: 停止中</button>
+  </div>
+
+  <!-- 音量バランス調整エリア -->
+  <div class="volume-controls">
+    <div class="volume-slider-wrap">
+      <label for="bgm-vol-slider">BGM音量:</label>
+      <input type="range" id="bgm-vol-slider" min="0" max="100" value="25" oninput="changeBgmVolume(this.value)">
+      <span id="bgm-vol-txt">25%</span>
+    </div>
+    <div class="volume-slider-wrap">
+      <label for="se-vol-slider">効果音(SE):</label>
+      <input type="range" id="se-vol-slider" min="0" max="100" value="80" oninput="changeSeVolume(this.value)">
+      <span id="se-vol-txt">80%</span>
+    </div>
   </div>
 
   <div class="battlefield">
