@@ -39,35 +39,64 @@ const FallbackArt = {
   </svg>`
 };
 
-/* --- BGM制御（ローカル・GitHubファイル再生） --- */
+/* --- BGM制御（エラー自己診断付き） --- */
 const bgmAudio = document.getElementById('audio-bgm');
 let isBgmPlaying = false;
 
 function tryResumeAudio() {
   if (isBgmPlaying && bgmAudio && bgmAudio.paused) {
     bgmAudio.volume = 0.25;
-    bgmAudio.play().catch(() => {});
+    bgmAudio.play().catch(e => {
+      console.warn("Audio play blocked:", e);
+    });
   }
 }
 
 function toggleBgm(e) {
   if (e) e.stopPropagation();
   const btn = document.getElementById('bgm-toggle-btn');
-  if (!bgmAudio) return;
+  if (!bgmAudio) {
+    alert("audio要素が見つかりません。");
+    return;
+  }
 
   if (bgmAudio.paused) {
     bgmAudio.volume = 0.25;
-    bgmAudio.play().then(() => {
-      isBgmPlaying = true;
-      btn.innerText = '🎵 BGM: 再生中';
-    }).catch(() => {
-      btn.innerText = '⚠️ 音源が見つかりません';
-    });
+    const playPromise = bgmAudio.play();
+
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        isBgmPlaying = true;
+        btn.innerText = '🎵 BGM: 再生中';
+        addLog('BGMの再生を開始しました。', 'log-buff');
+      }).catch(err => {
+        isBgmPlaying = false;
+        console.error("BGM Play Error:", err);
+
+        if (window.location.protocol === 'file:') {
+          btn.innerText = '⚠️ ローカル実行エラー';
+          addLog('【エラー】file:// で開いているためブラウザが音声を遮断しました。Live Serverなどのローカルサーバーか、GitHub Pages上で開いてください。', 'log-bozu');
+        } else {
+          btn.innerText = '⚠️ 音源読込エラー';
+          addLog(`【エラー】音源が見つかりません: ${bgmAudio.src} の配置を確認してください。`, 'log-bozu');
+        }
+      });
+    }
   } else {
     bgmAudio.pause();
     isBgmPlaying = false;
     btn.innerText = '🔇 BGM: 停止中';
+    addLog('BGMを一時停止しました。');
   }
+}
+
+if (bgmAudio) {
+  bgmAudio.addEventListener('error', (e) => {
+    console.error("Audio Load Error:", e);
+    const btn = document.getElementById('bgm-toggle-btn');
+    if (btn) btn.innerText = '⚠️ 音源404エラー';
+    addLog('【エラー】bgm/bgm.mp3 の読み込みに失敗しました。bgmフォルダとファイル名を確認してください。', 'log-bozu');
+  });
 }
 
 /* --- Web Audio 効果音 --- */
@@ -464,7 +493,6 @@ function resetDrawnCardUI() {
   document.getElementById('card-tag').className = 'card-type-tag tag-tono';
   document.getElementById('card-tag').innerText = '山札';
   
-  // card-back.png があれば表示、なければSVG
   document.getElementById('card-art-container').innerHTML = `
     <img src="images/card-back.png" alt="山札" onerror="this.outerHTML=FallbackArt.back">
   `;
@@ -496,7 +524,6 @@ function renderHand() {
     btn.className = 'skill-btn';
     btn.onclick = (e) => { e.stopPropagation(); castCard(card); };
     
-    // 画像タグ（images/{card.id}.png が存在しない場合はFallbackArt.slotDefaultを表示）
     btn.innerHTML = `
       <div class="skill-img-slot">
         <img src="images/${card.id}.png" alt="${card.id}" onerror="this.outerHTML=FallbackArt.slotDefault">
@@ -632,7 +659,6 @@ function drawBozuCard(willConsumeTurn, isFirstManual = false) {
     resetDeck();
     updateUI();
 
-    // 坊主による気絶時：即座に敵のターンへ移行（詰みバグ防止）
     setTimeout(enemyTurn, 650);
     return;
   } else {
@@ -697,12 +723,11 @@ function handleVictory() {
   document.getElementById('restart-btn').style.display = 'block';
 }
 
-/* --- 敵の行動AI（連続ターン進行バグ修正版） --- */
+/* --- 敵の行動AI --- */
 function enemyTurn() {
   if (isGameOver) return;
   turnDrawCount = 0;
 
-  // 1. 状態異常処理（毒）
   if (boss.poison > 0) {
     boss.hp = Math.max(0, boss.hp - 20);
     boss.poison--;
@@ -714,7 +739,6 @@ function enemyTurn() {
     }
   }
 
-  // 2. 敵の行動不能チェック
   if (boss.isStunned > 0) {
     boss.isStunned--;
     addLog(`月光の縛りにより、${boss.name} は動けない！ (敵スタン残: ${boss.isStunned}T)`, 'log-buff');
@@ -722,7 +746,6 @@ function enemyTurn() {
     return;
   }
 
-  // 3. プレイヤーの完全回避チェック
   if (player.isEvade) {
     addLog(`濃密な川霧に遮られ、${boss.name} の攻撃は虚しく空を切った！`, 'log-buff');
     player.isEvade = false;
@@ -731,7 +754,6 @@ function enemyTurn() {
     return;
   }
 
-  // 4. 桜吹雪ブラインドチェック
   if (boss.isBlinded) {
     boss.isBlinded = false;
     if (Math.random() < 0.5) {
@@ -742,7 +764,6 @@ function enemyTurn() {
     }
   }
 
-  // 5. 朝ぼらけ濃霧チェック
   if (boss.mistTurns > 0) {
     boss.mistTurns--;
     if (Math.random() < 0.5) {
@@ -753,7 +774,6 @@ function enemyTurn() {
     }
   }
 
-  // 6. 敵の固有スキルルーチン
   const randAction = Math.random();
 
   if (boss.id === 'wolf' && randAction < 0.30 && boss.atkBuff === 1.0) {
@@ -803,7 +823,6 @@ function enemyTurn() {
     return;
   }
 
-  // 7. 基本攻撃
   let baseDmg = Math.floor(Math.random() * (boss.atkMax - boss.atkMin + 1)) + boss.atkMin;
   baseDmg = Math.round(baseDmg * boss.atkBuff);
   boss.atkBuff = 1.0;
@@ -814,7 +833,6 @@ function enemyTurn() {
     addLog(`【痛恨の一撃】ベヒモスの『大地粉砕』が炸裂！`, 'log-boss');
   }
 
-  // 反撃判定
   if (player.isCounter) {
     Sound.attack();
     const recoilDmg = Math.max(1, Math.round(baseDmg * 0.30));
@@ -841,7 +859,6 @@ function enemyTurn() {
     return;
   }
 
-  // 被弾
   Sound.enemyHit();
   addLog(`${boss.name} の『${boss.skillName}』！ ${baseDmg} の打撃！`, 'log-boss');
 
@@ -876,7 +893,6 @@ function handleDefeat(msg = '力尽きてしまった……敗北。') {
   updateUI();
 }
 
-// 敵のターン終了時の処理（プレイヤーの気絶チェック）
 function finishEnemyTurn() {
   updateUI();
   if (isGameOver) return;
@@ -890,7 +906,6 @@ function finishEnemyTurn() {
     } else {
       addLog(`詩乃はまだ気絶している……敵の連続攻撃！ (気絶残り: ${player.stunnedTurns}ターン)`, 'log-bozu');
       updateUI();
-      // 気絶が続いている間は敵が連続で行動する
       setTimeout(enemyTurn, 1000);
     }
   } else {
